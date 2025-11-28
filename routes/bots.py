@@ -1,3 +1,29 @@
+@bots_bp.route('/check_validity', methods=['POST'])
+def check_validity():
+    """API to check if a bot assignment is still valid (by assign_id or bot_id)"""
+    data = request.get_json()
+    assign_id = data.get('assign_id')
+    bot_id = data.get('bot_id')
+    if not assign_id and not bot_id:
+        return jsonify({'error': 'assign_id or bot_id required'}), 400
+    query = UserBot.query.filter_by(is_active=True)
+    if assign_id:
+        query = query.filter_by(assign_id=assign_id)
+    if bot_id:
+        query = query.filter_by(bot_id=bot_id)
+    user_bot = query.first()
+    if not user_bot:
+        return jsonify({'valid': False, 'reason': 'Bot assignment not found'}), 404
+    # If validity is set, check expiry
+    if user_bot.validity:
+        from datetime import datetime
+        now = datetime.utcnow()
+        if user_bot.validity < now:
+            return jsonify({'valid': False, 'reason': 'Bot assignment expired'}), 200
+        else:
+            return jsonify({'valid': True, 'reason': 'Bot assignment valid'}), 200
+    # If no validity set, treat as not valid
+    return jsonify({'valid': False, 'reason': 'No validity set'}), 200
 
 # Place this endpoint after bots_bp is defined
 from flask import Blueprint, request, jsonify

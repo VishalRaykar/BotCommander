@@ -438,13 +438,21 @@ body {
     font-weight: 600;
     color: #333;
     border-bottom: 2px solid #e0e0e0;
-}
+        border-right: 1px solid #e0e0e0;
+    }
+    .controls-table th:last-child {
+        border-right: none;
+    }
 
 .controls-table td {
     padding: 1.5rem 1rem;
     border-bottom: 1px solid #e0e0e0;
     vertical-align: middle;
-}
+        border-right: 1px solid #e0e0e0;
+    }
+    .controls-table td:last-child {
+        border-right: none;
+    }
 
 .controls-table tr:hover {
     background: #f8f9fa;
