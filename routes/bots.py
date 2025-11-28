@@ -15,12 +15,8 @@ def list_bots():
         # For admin, get user_id from query params (default to self)
         if user.is_admin:
             view_user_id = request.args.get('user_id', user.user_id, type=int)
-            if view_user_id == user.user_id:
-                # Admin viewing own bots
-                user_bots = UserBot.query.filter_by(user_id=user.user_id, is_active=True).all()
-            else:
-                # Admin viewing another user's bots, only those with allow_admin_control
-                user_bots = UserBot.query.filter_by(user_id=view_user_id, is_active=True, allow_admin_control=True).all()
+            # Admin sees all bots for selected user
+            user_bots = UserBot.query.filter_by(user_id=view_user_id, is_active=True).all()
         else:
             # Regular users see only their own bots
             user_bots = UserBot.query.filter_by(user_id=user.user_id, is_active=True).all()
@@ -61,10 +57,17 @@ def get_bot_details(assign_id):
         user_bot = UserBot.query.filter_by(assign_id=assign_id, is_active=True).first_or_404()
         # Check if user can access this bot
         if user_bot.user_id != user.user_id:
-            # Allow access if user is admin and bot has admin control enabled
-            if not (user.is_admin and user_bot.allow_admin_control):
+            # Admin can view any bot, but controls depend on allow_admin_control
+            if not user.is_admin:
                 return jsonify({'error': 'Access denied'}), 403
         bot_data = user_bot.to_dict(decrypt_bot_id=True)
+        # Add flag for admin control permission (for frontend)
+        can_admin_control = False
+        if user.user_id == user_bot.user_id:
+            can_admin_control = True  # Owner always has control
+        elif user.is_admin:
+            can_admin_control = bool(user_bot.allow_admin_control)
+        bot_data['can_admin_control'] = can_admin_control
         # Get or create bot behaviour
         behaviour = BotBehaviour.query.filter_by(assign_id=assign_id, is_active=True).first()
         if not behaviour:

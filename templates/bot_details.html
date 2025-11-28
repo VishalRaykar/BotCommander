@@ -104,13 +104,15 @@ async function loadBotDetails() {
         if (response.ok) {
             const data = await response.json();
             botData = data.bot;
-            // Show Admin Control toggle if user is owner
+            // Show Admin Control toggle only if user is owner
+            const adminDiv = document.getElementById('adminControlDiv');
             if (window.currentUser && botData.user_id === window.currentUser.user_id) {
-                const adminDiv = document.getElementById('adminControlDiv');
                 adminDiv.style.display = 'flex';
                 const adminToggle = document.getElementById('adminControlToggle');
                 adminToggle.checked = !!botData.allow_admin_control;
                 adminToggle.disabled = false;
+            } else {
+                adminDiv.style.display = 'none';
             }
             // Load current bot behaviour state
             if (botData.behaviour) {
@@ -124,6 +126,21 @@ async function loadBotDetails() {
                 updateStatusBadge('hardStop', beh.hard_stop_all_trades);
                 updateStatusBadge('commonCommander', beh.listen_to_common_commander);
                 updateStatusBadge('newsBased', beh.news_based_start_stop);
+            }
+            // Disable controls for admin if not allowed
+            const isOwner = window.currentUser && botData.user_id === window.currentUser.user_id;
+            const canAdminControl = !!botData.can_admin_control;
+            // Controls: botState, hardStop, commonCommander, newsBased, refreshData
+            const controlIds = ['botState', 'hardStop', 'commonCommander', 'newsBased'];
+            controlIds.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.disabled = !(isOwner || canAdminControl);
+                }
+            });
+            const refreshBtn = document.getElementById('refreshData');
+            if (refreshBtn) {
+                refreshBtn.disabled = !(isOwner || canAdminControl);
             }
         } else {
             if (response.status === 401) {
