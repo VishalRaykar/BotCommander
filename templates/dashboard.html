@@ -5,8 +5,18 @@
 {% block content %}
 <div class="dashboard-container">
     <div class="dashboard-header">
-        <h1><i class="fas fa-tachometer-alt"></i> My Bots</h1>
-        <p>Manage and control your trading bots</p>
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+            <div>
+                <h1 style="display: inline-block;"><i class="fas fa-tachometer-alt"></i> My Bots</h1>
+                <p style="margin: 0;">Manage and control your trading bots</p>
+            </div>
+            <div id="userDropdownDiv" style="display: none; align-items: center;">
+                <label for="userDropdown" style="font-weight: bold; margin-right: 0.5rem;">User:</label>
+                <div style="position: relative; min-width: 220px; display: flex; align-items: center;">
+                    <select id="userDropdown" class="styled-dropdown" style="width: 100%;"></select>
+                </div>
+            </div>
+        </div>
     </div>
     
     <div class="bots-grid" id="botsGrid">
@@ -25,14 +35,44 @@
 
 {% block scripts %}
 <script>
+let currentUser = null;
+let allUsers = [];
+let selectedUserId = null;
+
+async function loadUsersAndDropdown() {
+    // Only for admins
+    if (!currentUser || !currentUser.is_admin) return;
+    try {
+        const response = await api.get('/api/users');
+        if (response.ok) {
+            const data = await response.json();
+            allUsers = data.users || [];
+            const dropdown = document.getElementById('userDropdown');
+            dropdown.innerHTML = allUsers.map(u => `<option value="${u.user_id}">${u.name} (${u.email})${u.user_id === currentUser.user_id ? ' [Me]' : ''}</option>`).join('');
+            dropdown.value = selectedUserId || currentUser.user_id;
+            dropdown.addEventListener('change', function() {
+                selectedUserId = this.value;
+                loadBots();
+            });
+            document.getElementById('userDropdownDiv').style.display = 'flex';
+        }
+    } catch (e) {
+        console.error('Error loading users:', e);
+    }
+}
+
 async function loadBots() {
     try {
-        const response = await api.get('/api/bots');
+        let url = '/api/bots';
+        if (currentUser && currentUser.is_admin) {
+            const uid = selectedUserId || currentUser.user_id;
+            url += `?user_id=${uid}`;
+        }
+        const response = await api.get(url);
         if (response.ok) {
             const data = await response.json();
             const botsGrid = document.getElementById('botsGrid');
             const emptyState = document.getElementById('emptyState');
-            
             if (data.bots && data.bots.length > 0) {
                 botsGrid.innerHTML = data.bots.map(bot => `
                     <div class="bot-card">
@@ -50,6 +90,7 @@ async function loadBots() {
                         </div>
                     </div>
                 `).join('');
+                botsGrid.style.display = '';
                 emptyState.style.display = 'none';
             } else {
                 botsGrid.style.display = 'none';
@@ -65,8 +106,13 @@ async function loadBots() {
     }
 }
 
-// Check auth and load bots
-checkAuth().then(() => {
+// Check auth and load bots/users
+checkAuth().then(user => {
+    currentUser = user && user.user ? user.user : null;
+    selectedUserId = currentUser ? currentUser.user_id : null;
+    if (currentUser && currentUser.is_admin) {
+        loadUsersAndDropdown();
+    }
     loadBots();
 });
 </script>

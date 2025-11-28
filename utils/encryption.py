@@ -23,6 +23,15 @@ def encrypt_bot_id(bot_id: str) -> str:
 
 def decrypt_bot_id(encrypted_bot_id: str) -> str:
     """Decrypt bot_id from database"""
-    fernet = _get_fernet()
-    decrypted = fernet.decrypt(encrypted_bot_id.encode())
-    return decrypted.decode()
+    from cryptography.fernet import InvalidToken
+    
+    try:
+        fernet = _get_fernet()
+        decrypted = fernet.decrypt(encrypted_bot_id.encode())
+        return decrypted.decode()
+    except InvalidToken:
+        # If decryption fails, return a placeholder indicating encryption key mismatch
+        return "[Encrypted - Key Mismatch]"
+    except Exception as e:
+        # Handle other decryption errors gracefully
+        return f"[Decryption Error: {type(e).__name__}]"

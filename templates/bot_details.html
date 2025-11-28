@@ -4,11 +4,20 @@
 
 {% block content %}
 <div class="bot-details-container">
-    <div class="bot-details-header">
-        <a href="/dashboard" class="btn btn-secondary">
-            <i class="fas fa-arrow-left"></i> Back to Dashboard
-        </a>
-        <h1><i class="fas fa-robot"></i> Bot Control Panel</h1>
+    <div class="bot-details-header" style="display: flex; align-items: center; justify-content: space-between;">
+        <div>
+            <a href="/dashboard" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> Back to Dashboard
+            </a>
+            <h1 style="display: inline-block; margin-left: 1rem;"><i class="fas fa-robot"></i> Bot Control Panel</h1>
+        </div>
+        <div id="adminControlDiv" style="display: none; align-items: center;">
+            <label style="margin-right: 0.5rem; font-weight: bold;">Admin Control</label>
+            <label class="toggle-switch">
+                <input type="checkbox" id="adminControlToggle" data-action="allow_admin_control">
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
     </div>
     
     <div class="bot-controls">
@@ -95,7 +104,14 @@ async function loadBotDetails() {
         if (response.ok) {
             const data = await response.json();
             botData = data.bot;
-            
+            // Show Admin Control toggle if user is owner
+            if (window.currentUser && botData.user_id === window.currentUser.user_id) {
+                const adminDiv = document.getElementById('adminControlDiv');
+                adminDiv.style.display = 'flex';
+                const adminToggle = document.getElementById('adminControlToggle');
+                adminToggle.checked = !!botData.allow_admin_control;
+                adminToggle.disabled = false;
+            }
             // Load current bot behaviour state
             if (botData.behaviour) {
                 const beh = botData.behaviour;
@@ -103,7 +119,6 @@ async function loadBotDetails() {
                 document.getElementById('hardStop').checked = beh.hard_stop_all_trades || false;
                 document.getElementById('commonCommander').checked = beh.listen_to_common_commander || false;
                 document.getElementById('newsBased').checked = beh.news_based_start_stop || false;
-                
                 // Update status badges
                 updateStatusBadge('botState', beh.bot_state);
                 updateStatusBadge('hardStop', beh.hard_stop_all_trades);
@@ -194,6 +209,18 @@ document.querySelectorAll('.toggle-switch input').forEach(toggle => {
         controlBot(action, value);
     });
 });
+// Admin Control toggle (owner only)
+const adminToggle = document.getElementById('adminControlToggle');
+if (adminToggle) {
+    adminToggle.addEventListener('change', async (e) => {
+        adminToggle.disabled = true;
+        try {
+            await controlBot('allow_admin_control', e.target.checked);
+        } finally {
+            adminToggle.disabled = false;
+        }
+    });
+}
 
 // Setup refresh button
 document.getElementById('refreshData').addEventListener('click', async () => {
@@ -217,7 +244,8 @@ document.getElementById('refreshData').addEventListener('click', async () => {
 });
 
 // Check auth and load bot details
-checkAuth().then(() => {
+checkAuth().then(user => {
+    window.currentUser = user && user.user ? user.user : null;
     loadBotDetails();
 });
 </script>

@@ -9,47 +9,79 @@ bots_bp = Blueprint('bots', __name__, url_prefix='/api/bots')
 @bots_bp.route('', methods=['GET'])
 @require_login
 def list_bots():
-    """List all bots assigned to current user"""
-    user = get_current_user()
-    user_bots = UserBot.query.filter_by(user_id=user.user_id, is_active=True).all()
-    
-    bots = []
-    for ub in user_bots:
-        bot_data = ub.to_dict(decrypt_bot_id=True)
-        bots.append({
-            'assign_id': bot_data['assign_id'],
-            'bot_id': bot_data['bot_id'],
-            'created_on': bot_data['created_on']
-        })
-    
-    return jsonify({'bots': bots}), 200
+    """List bots - for admin: filtered by user_id query param, for users: their own bots"""
+    try:
+        user = get_current_user()
+        # For admin, get user_id from query params (default to self)
+        if user.is_admin:
+            view_user_id = request.args.get('user_id', user.user_id, type=int)
+            if view_user_id == user.user_id:
+                # Admin viewing own bots
+                user_bots = UserBot.query.filter_by(user_id=user.user_id, is_active=True).all()
+            else:
+                # Admin viewing another user's bots, only those with allow_admin_control
+                user_bots = UserBot.query.filter_by(user_id=view_user_id, is_active=True, allow_admin_control=True).all()
+        else:
+            # Regular users see only their own bots
+            user_bots = UserBot.query.filter_by(user_id=user.user_id, is_active=True).all()
+        bots = []
+        for ub in user_bots:
+            try:
+                bot_data = ub.to_dict(decrypt_bot_id=True)
+                bots.append({
+                    'assign_id': bot_data['assign_id'],
+                    'bot_id': bot_data['bot_id'],
+                    'user_id': bot_data['user_id'],
+                    'allow_admin_control': bot_data['allow_admin_control'],
+                    'created_on': bot_data['created_on']
+                })
+            except Exception as e:
+                # Log error but continue with other bots
+                print(f"Error processing bot {ub.assign_id}: {str(e)}")
+                bots.append({
+                    'assign_id': ub.assign_id,
+                    'user_id': ub.user_id,
+                    'bot_id': '[Decryption Error]',
+                    'allow_admin_control': getattr(ub, 'allow_admin_control', False),
+                    'created_on': ub.created_on.isoformat() if ub.created_on else None
+                })
+        return jsonify({'bots': bots}), 200
+    except Exception as e:
+        import traceback
+        print(f"Error in list_bots: {str(e)}")
+        print(traceback.format_exc())
+        return jsonify({'error': f'Failed to load bots: {str(e)}'}), 500
 
 @bots_bp.route('/<int:assign_id>', methods=['GET'])
 @require_login
 def get_bot_details(assign_id):
-    """Get bot details by assign_id"""
-    user = get_current_user()
-    user_bot = UserBot.query.filter_by(
-        assign_id=assign_id,
-        user_id=user.user_id,
-        is_active=True
-    ).first_or_404()
-    
-    bot_data = user_bot.to_dict(decrypt_bot_id=True)
-    
-    # Get or create bot behaviour
-    behaviour = BotBehaviour.query.filter_by(assign_id=assign_id, is_active=True).first()
-    if not behaviour:
-        # Create default behaviour record
-        behaviour = BotBehaviour(
-            assign_id=assign_id,
-            created_by=user.user_id
-        )
-        db.session.add(behaviour)
-        db.session.commit()
-    
-    bot_data['behaviour'] = behaviour.to_dict()
-    return jsonify({'bot': bot_data}), 200
+    """Get bot details by assign_id - checks ownership or admin control permission"""
+    try:
+        user = get_current_user()
+        user_bot = UserBot.query.filter_by(assign_id=assign_id, is_active=True).first_or_404()
+        # Check if user can access this bot
+        if user_bot.user_id != user.user_id:
+            # Allow access if user is admin and bot has admin control enabled
+            if not (user.is_admin and user_bot.allow_admin_control):
+                return jsonify({'error': 'Access denied'}), 403
+        bot_data = user_bot.to_dict(decrypt_bot_id=True)
+        # Get or create bot behaviour
+        behaviour = BotBehaviour.query.filter_by(assign_id=assign_id, is_active=True).first()
+        if not behaviour:
+            # Create default behaviour record
+            behaviour = BotBehaviour(
+                assign_id=assign_id,
+                created_by=user.user_id
+            )
+            db.session.add(behaviour)
+            db.session.commit()
+        bot_data['behaviour'] = behaviour.to_dict()
+        return jsonify({'bot': bot_data}), 200
+    except Exception as e:
+        import traceback
+        print(f"Error in get_bot_details: {str(e)}")
+        print(traceback.format_exc())
+        return jsonify({'error': f'Failed to load bot details: {str(e)}'}), 500
 
 @bots_bp.route('', methods=['POST'])
 @require_admin
@@ -106,21 +138,30 @@ def assign_bot():
 @bots_bp.route('/<int:assign_id>/control', methods=['POST'])
 @require_login
 def control_bot(assign_id):
-    """Control bot actions"""
+    """Control bot actions or toggle admin control permission"""
     user = get_current_user()
-    user_bot = UserBot.query.filter_by(
-        assign_id=assign_id,
-        user_id=user.user_id,
-        is_active=True
-    ).first_or_404()
-    
+    user_bot = UserBot.query.filter_by(assign_id=assign_id, is_active=True).first_or_404()
+    # Check if user can control this bot
+    if user_bot.user_id != user.user_id:
+        # Allow access if user is admin and bot has admin control enabled
+        if not (user.is_admin and user_bot.allow_admin_control):
+            return jsonify({'error': 'Access denied'}), 403
     data = request.get_json()
     action = data.get('action')
     value = data.get('value')
-    
     if not action:
         return jsonify({'error': 'Action is required'}), 400
-    
+    # Handle allow_admin_control toggle (only bot owner can change)
+    if action == 'allow_admin_control':
+        if user_bot.user_id != user.user_id:
+            return jsonify({'error': 'Only bot owner can change admin control permission'}), 403
+        user_bot.allow_admin_control = bool(value)
+        user_bot.updated_by = user.user_id
+        db.session.commit()
+        return jsonify({
+            'message': 'Admin control permission updated successfully',
+            'allow_admin_control': user_bot.allow_admin_control
+        }), 200
     # Get or create bot behaviour
     behaviour = BotBehaviour.query.filter_by(assign_id=assign_id, is_active=True).first()
     if not behaviour:
@@ -130,7 +171,6 @@ def control_bot(assign_id):
         )
         db.session.add(behaviour)
         db.session.flush()
-    
     # Valid actions mapping to database columns
     action_map = {
         'bot_state': 'bot_state',
@@ -139,22 +179,18 @@ def control_bot(assign_id):
         'news_based_start_stop': 'news_based_start_stop',
         'refresh_data_from_bot': 'refresh_data_from_bot'
     }
-    
     if action not in action_map:
-        return jsonify({'error': f'Invalid action. Valid actions: {", ".join(action_map.keys())}'}), 400
-    
+        valid_actions = ', '.join(action_map.keys())
+        return jsonify({'error': f'Invalid action. Valid actions: {valid_actions}'}), 400
     # Update the behaviour record
     column_name = action_map[action]
     setattr(behaviour, column_name, bool(value))
     behaviour.updated_by = user.user_id
     db.session.commit()
-    
     # Decrypt bot_id for API call (if needed for actual bot communication)
     bot_id = decrypt_bot_id(user_bot.bot_id)
-    
     # Here you would make API call to the actual bot
     # TODO: Implement actual bot API communication using bot_id and the updated behaviour
-    
     return jsonify({
         'message': f'Bot control action "{action}" updated successfully',
         'bot_id': bot_id,

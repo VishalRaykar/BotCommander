@@ -6,16 +6,16 @@ async function checkAuth() {
         if (response.ok) {
             const data = await response.json();
             await updateNavUser(data.user);
-            return true;
+            return data;
         } else {
             if (window.location.pathname !== '/' && !window.location.pathname.includes('index')) {
                 window.location.href = '/';
             }
-            return false;
+            return null;
         }
     } catch (error) {
         console.error('Auth check failed:', error);
-        return false;
+        return null;
     }
 }
 
