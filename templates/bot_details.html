@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+
+{% block title %}Bot Details - BotCommander{% endblock %}
+
+{% block content %}
+<div class="bot-details-container">
+    <div class="bot-details-header">
+        <a href="/dashboard" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i> Back to Dashboard
+        </a>
+        <h1><i class="fas fa-robot"></i> Bot Control Panel</h1>
+    </div>
+    
+    <div class="bot-controls">
+        <table class="controls-table">
+            <thead>
+                <tr>
+                    <th>Action</th>
+                    <th>Description</th>
+                    <th>Control</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><i class="fas fa-power-off"></i> Bot State</td>
+                    <td>Turn the bot ON or OFF</td>
+                    <td>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="botState" data-action="bot_state">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </td>
+                    <td><span id="botStateStatus" class="status-badge">OFF</span></td>
+                </tr>
+                <tr>
+                    <td><i class="fas fa-stop-circle"></i> Hard Stop All Trades</td>
+                    <td>Close all trades and stop taking new trades</td>
+                    <td>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="hardStop" data-action="hard_stop_all_trades">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </td>
+                    <td><span id="hardStopStatus" class="status-badge">OFF</span></td>
+                </tr>
+                <tr>
+                    <td><i class="fas fa-broadcast-tower"></i> Listen to Common Commander</td>
+                    <td>Use common controller API to control the bot</td>
+                    <td>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="commonCommander" data-action="listen_to_common_commander">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </td>
+                    <td><span id="commonCommanderStatus" class="status-badge">OFF</span></td>
+                </tr>
+                <tr>
+                    <td><i class="fas fa-newspaper"></i> News Based Start Stop</td>
+                    <td>Enable news-based start/stop feature</td>
+                    <td>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="newsBased" data-action="news_based_start_stop">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </td>
+                    <td><span id="newsBasedStatus" class="status-badge">OFF</span></td>
+                </tr>
+                <tr>
+                    <td><i class="fas fa-sync-alt"></i> Refresh Data from Bot</td>
+                    <td>Refresh bot data in database</td>
+                    <td>
+                        <button class="btn btn-primary" id="refreshData" data-action="refresh_data_from_bot">
+                            <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
+                    </td>
+                    <td><span id="refreshDataStatus" class="status-badge">Ready</span></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    
+    <div id="messageDiv" class="message" style="display: none;"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const assignId = {{ assign_id }};
+let botData = {};
+
+async function loadBotDetails() {
+    try {
+        const response = await api.get(`/api/bots/${assignId}`);
+        if (response.ok) {
+            const data = await response.json();
+            botData = data.bot;
+            
+            // Load current bot behaviour state
+            if (botData.behaviour) {
+                const beh = botData.behaviour;
+                document.getElementById('botState').checked = beh.bot_state || false;
+                document.getElementById('hardStop').checked = beh.hard_stop_all_trades || false;
+                document.getElementById('commonCommander').checked = beh.listen_to_common_commander || false;
+                document.getElementById('newsBased').checked = beh.news_based_start_stop || false;
+                
+                // Update status badges
+                updateStatusBadge('botState', beh.bot_state);
+                updateStatusBadge('hardStop', beh.hard_stop_all_trades);
+                updateStatusBadge('commonCommander', beh.listen_to_common_commander);
+                updateStatusBadge('newsBased', beh.news_based_start_stop);
+            }
+        } else {
+            if (response.status === 401) {
+                window.location.href = '/';
+            } else if (response.status === 404) {
+                alert('Bot not found');
+                window.location.href = '/dashboard';
+            }
+        }
+    } catch (error) {
+        console.error('Error loading bot details:', error);
+    }
+}
+
+function updateStatusBadge(elementId, value) {
+    // Map element IDs to status badge IDs
+    const statusMap = {
+        'botState': 'botStateStatus',
+        'hardStop': 'hardStopStatus',
+        'commonCommander': 'commonCommanderStatus',
+        'newsBased': 'newsBasedStatus'
+    };
+    
+    const statusId = statusMap[elementId] || elementId + 'Status';
+    const statusEl = document.getElementById(statusId);
+    if (statusEl) {
+        statusEl.textContent = value ? 'ON' : 'OFF';
+        statusEl.className = 'status-badge ' + (value ? 'status-on' : 'status-off');
+    }
+}
+
+async function controlBot(action, value) {
+    try {
+        const response = await api.post(`/api/bots/${assignId}/control`, {
+            action: action,
+            value: value
+        });
+        
+        const data = await response.json();
+        showMessage(data.message || 'Action executed successfully', 'success');
+        
+        // Update botData with new behaviour
+        if (data.behaviour) {
+            botData.behaviour = data.behaviour;
+        }
+        
+        // Update status badge
+        const actionMap = {
+            'bot_state': 'botState',
+            'hard_stop_all_trades': 'hardStop',
+            'listen_to_common_commander': 'commonCommander',
+            'news_based_start_stop': 'newsBased'
+        };
+        
+        const elementId = actionMap[action] || action;
+        updateStatusBadge(elementId, value);
+    } catch (error) {
+        showMessage('Error executing action', 'error');
+        console.error('Error controlling bot:', error);
+        // Revert toggle on error
+        const toggle = document.querySelector(`[data-action="${action}"]`);
+        if (toggle) {
+            toggle.checked = !value;
+        }
+    }
+}
+
+function showMessage(message, type) {
+    const messageDiv = document.getElementById('messageDiv');
+    messageDiv.textContent = message;
+    messageDiv.className = `message message-${type}`;
+    messageDiv.style.display = 'block';
+    setTimeout(() => {
+        messageDiv.style.display = 'none';
+    }, 3000);
+}
+
+// Setup toggle switches
+document.querySelectorAll('.toggle-switch input').forEach(toggle => {
+    toggle.addEventListener('change', (e) => {
+        const action = e.target.dataset.action;
+        const value = e.target.checked;
+        controlBot(action, value);
+    });
+});
+
+// Setup refresh button
+document.getElementById('refreshData').addEventListener('click', async () => {
+    const btn = document.getElementById('refreshData');
+    const statusEl = document.getElementById('refreshDataStatus');
+    
+    btn.disabled = true;
+    statusEl.textContent = 'Refreshing...';
+    statusEl.className = 'status-badge status-loading';
+    
+    try {
+        await controlBot('refresh_data_from_bot', true);
+        statusEl.textContent = 'Refreshed';
+        statusEl.className = 'status-badge status-on';
+    } catch (error) {
+        statusEl.textContent = 'Error';
+        statusEl.className = 'status-badge status-off';
+    } finally {
+        btn.disabled = false;
+    }
+});
+
+// Check auth and load bot details
+checkAuth().then(() => {
+    loadBotDetails();
+});
+</script>
+{% endblock %}
+

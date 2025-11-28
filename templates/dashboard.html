@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - BotCommander{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <div class="dashboard-header">
+        <h1><i class="fas fa-tachometer-alt"></i> My Bots</h1>
+        <p>Manage and control your trading bots</p>
+    </div>
+    
+    <div class="bots-grid" id="botsGrid">
+        <div class="loading">
+            <i class="fas fa-spinner fa-spin"></i> Loading bots...
+        </div>
+    </div>
+    
+    <div class="empty-state" id="emptyState" style="display: none;">
+        <i class="fas fa-robot"></i>
+        <h2>No bots assigned</h2>
+        <p>Contact administrator to assign bots to your account.</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadBots() {
+    try {
+        const response = await api.get('/api/bots');
+        if (response.ok) {
+            const data = await response.json();
+            const botsGrid = document.getElementById('botsGrid');
+            const emptyState = document.getElementById('emptyState');
+            
+            if (data.bots && data.bots.length > 0) {
+                botsGrid.innerHTML = data.bots.map(bot => `
+                    <div class="bot-card">
+                        <div class="bot-card-header">
+                            <i class="fas fa-robot"></i>
+                            <h3>Bot ${bot.bot_id}</h3>
+                        </div>
+                        <div class="bot-card-body">
+                            <p><i class="fas fa-calendar"></i> Assigned: ${new Date(bot.created_on).toLocaleDateString()}</p>
+                        </div>
+                        <div class="bot-card-footer">
+                            <a href="/bot/${bot.assign_id}" class="btn btn-primary">
+                                <i class="fas fa-pencil-alt"></i> Details
+                            </a>
+                        </div>
+                    </div>
+                `).join('');
+                emptyState.style.display = 'none';
+            } else {
+                botsGrid.style.display = 'none';
+                emptyState.style.display = 'block';
+            }
+        } else {
+            if (response.status === 401) {
+                window.location.href = '/';
+            }
+        }
+    } catch (error) {
+        console.error('Error loading bots:', error);
+    }
+}
+
+// Check auth and load bots
+checkAuth().then(() => {
+    loadBots();
+});
+</script>
+{% endblock %}
+
