@@ -85,6 +85,22 @@
                     </td>
                     <td><span id="refreshDataStatus" class="status-badge">Ready</span></td>
                 </tr>
+                    <tr id="validityRow" class="validity-control-row" style="display: none;">
+                        <td style="min-width: 180px;">
+                            <i class="fas fa-calendar-alt" style="color: #667eea; font-size: 1.3rem;"></i>
+                            <span style="font-weight: 600; margin-left: 0.5rem;">Validity</span>
+                        </td>
+                        <td>
+                            <span style="color: #888; font-size: 0.97rem;">Set expiry date/time for this bot assignment.<br><span style="color:#c82333; font-size:0.92em;">Leave blank for no expiry.</span></span>
+                        </td>
+                        <td>
+                            <div class="validity-input-group">
+                                <input type="datetime-local" id="validityInput" class="form-control validity-input">
+                                <button class="btn btn-success validity-btn" id="updateValidityBtn"><i class="fas fa-check"></i> Update</button>
+                            </div>
+                        </td>
+                        <td><span id="validityStatus" class="status-badge validity-status">-</span></td>
+                    </tr>
             </tbody>
         </table>
     </div>
@@ -104,6 +120,31 @@ async function loadBotDetails() {
         if (response.ok) {
             const data = await response.json();
             botData = data.bot;
+            // Show validity row for admin
+            const validityRow = document.getElementById('validityRow');
+            const validityInput = document.getElementById('validityInput');
+            const validityStatus = document.getElementById('validityStatus');
+            const updateValidityBtn = document.getElementById('updateValidityBtn');
+            const isAdmin = window.currentUser && window.currentUser.is_admin;
+            if (isAdmin) {
+                validityRow.style.display = '';
+                // Set input value to current validity (ISO string to local)
+                if (botData.validity) {
+                    const dt = new Date(botData.validity);
+                    // Format to yyyy-MM-ddTHH:mm for datetime-local
+                    const pad = n => n.toString().padStart(2, '0');
+                    const local = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+                    validityInput.value = local;
+                    validityStatus.textContent = local.replace('T', ' ');
+                } else {
+                    validityInput.value = '';
+                    validityStatus.textContent = '-';
+                }
+                validityInput.disabled = false;
+                updateValidityBtn.disabled = false;
+            } else {
+                validityRow.style.display = 'none';
+            }
             // Show Admin Control toggle only if user is owner
             const adminDiv = document.getElementById('adminControlDiv');
             if (window.currentUser && botData.user_id === window.currentUser.user_id) {
@@ -265,6 +306,31 @@ checkAuth().then(user => {
     window.currentUser = user && user.user ? user.user : null;
     loadBotDetails();
 });
+
+// Validity update logic (admin only)
+const updateValidityBtn = document.getElementById('updateValidityBtn');
+if (updateValidityBtn) {
+    updateValidityBtn.addEventListener('click', async () => {
+        const validityInput = document.getElementById('validityInput');
+        let newVal = validityInput.value;
+        if (!newVal) {
+            showMessage('Please select a date/time', 'error');
+            return;
+        }
+        // Convert local datetime to ISO string
+        const isoVal = new Date(newVal).toISOString();
+        updateValidityBtn.disabled = true;
+        try {
+            await controlBot('validity', isoVal);
+            showMessage('Validity updated', 'success');
+            document.getElementById('validityStatus').textContent = newVal.replace('T', ' ');
+        } catch (e) {
+            showMessage('Failed to update validity', 'error');
+        } finally {
+            updateValidityBtn.disabled = false;
+        }
+    });
+}
 </script>
 {% endblock %}
 

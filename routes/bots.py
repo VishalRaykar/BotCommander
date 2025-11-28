@@ -1,3 +1,5 @@
+
+# Place this endpoint after bots_bp is defined
 from flask import Blueprint, request, jsonify
 from models import UserBot, User, BotBehaviour, db
 from utils.auth import require_login, require_admin, get_current_user
@@ -144,16 +146,29 @@ def control_bot(assign_id):
     """Control bot actions or toggle admin control permission"""
     user = get_current_user()
     user_bot = UserBot.query.filter_by(assign_id=assign_id, is_active=True).first_or_404()
-    # Check if user can control this bot
-    if user_bot.user_id != user.user_id:
-        # Allow access if user is admin and bot has admin control enabled
-        if not (user.is_admin and user_bot.allow_admin_control):
-            return jsonify({'error': 'Access denied'}), 403
+    # Check if user can control this bot (except for validity update)
     data = request.get_json()
     action = data.get('action')
     value = data.get('value')
     if not action:
         return jsonify({'error': 'Action is required'}), 400
+    # Allow admin to update validity even if admin control is not enabled
+    if action == 'validity':
+        if not user.is_admin:
+            return jsonify({'error': 'Only admin can update validity'}), 403
+        from datetime import datetime
+        try:
+            print('Received validity value:', value)  # Debug print
+            # Remove trailing Z if present (Z = UTC)
+            val = value.rstrip('Z') if value else None
+            user_bot.validity = datetime.fromisoformat(val) if val else None
+            print('Parsed validity:', user_bot.validity)  # Debug print
+            user_bot.updated_by = user.user_id
+            db.session.commit()
+            return jsonify({'message': 'Validity updated successfully', 'validity': user_bot.validity.isoformat() if user_bot.validity else None}), 200
+        except Exception as e:
+            print('Error parsing validity:', str(e))  # Debug print
+            return jsonify({'error': f'Invalid datetime format: {str(e)}'}), 400
     # Handle allow_admin_control toggle (only bot owner can change)
     if action == 'allow_admin_control':
         if user_bot.user_id != user.user_id:
@@ -165,6 +180,10 @@ def control_bot(assign_id):
             'message': 'Admin control permission updated successfully',
             'allow_admin_control': user_bot.allow_admin_control
         }), 200
+    # For all other actions, check control permission
+    if user_bot.user_id != user.user_id:
+        if not (user.is_admin and user_bot.allow_admin_control):
+            return jsonify({'error': 'Access denied'}), 403
     # Get or create bot behaviour
     behaviour = BotBehaviour.query.filter_by(assign_id=assign_id, is_active=True).first()
     if not behaviour:

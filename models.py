@@ -52,6 +52,7 @@ class UserBot(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.user_id', ondelete='CASCADE'), nullable=False)
     bot_id = db.Column(db.Text, nullable=False, unique=True)  # Encrypted bot_id stored as text, unique
     allow_admin_control = db.Column(db.Boolean, default=False, nullable=False)  # Allow admin to control this bot
+    validity = db.Column(db.DateTime, nullable=True)  # Validity datetime for bot assignment
     created_on = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     created_by = db.Column(db.Integer, db.ForeignKey('user.user_id'), nullable=True)
     updated_on = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -63,7 +64,6 @@ class UserBot(db.Model):
     
     def to_dict(self, decrypt_bot_id=False):
         from utils.encryption import decrypt_bot_id as decrypt
-        
         bot_id_decrypted = None
         if decrypt_bot_id:
             try:
@@ -72,12 +72,12 @@ class UserBot(db.Model):
                 # Handle decryption errors gracefully
                 print(f"Warning: Failed to decrypt bot_id for assign_id {self.assign_id}: {str(e)}")
                 bot_id_decrypted = "[Decryption Failed]"
-        
         data = {
             'assign_id': self.assign_id,
             'user_id': self.user_id,
             'bot_id': bot_id_decrypted,
             'allow_admin_control': self.allow_admin_control,
+            'validity': self.validity.isoformat() if self.validity else None,
             'is_active': self.is_active,
             'created_on': self.created_on.isoformat() if self.created_on else None,
             'updated_on': self.updated_on.isoformat() if self.updated_on else None

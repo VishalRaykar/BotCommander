@@ -1,3 +1,44 @@
+/* Validity Control Row Styling */
+.validity-control-row {
+    background: #f6f8fc;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(102,126,234,0.07);
+    transition: box-shadow 0.2s;
+}
+.validity-control-row:hover {
+    box-shadow: 0 4px 16px rgba(102,126,234,0.13);
+    background: #eef2fb;
+}
+.validity-input-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.validity-input {
+    padding: 0.5rem 1rem;
+    border: 1px solid #ccc;
+    border-radius: 0.375rem;
+    font-size: 1rem;
+    min-width: 180px;
+    background: #fff;
+    transition: border-color 0.2s;
+}
+.validity-input:focus {
+    border-color: #667eea;
+    outline: none;
+}
+.validity-btn {
+    padding: 0.5rem 1.1rem;
+    font-size: 1rem;
+    border-radius: 0.375rem;
+    margin-left: 0.2rem;
+    box-shadow: 0 1px 2px rgba(102,126,234,0.07);
+}
+.validity-status {
+    min-width: 90px;
+    display: inline-block;
+    text-align: center;
+}
 /* Modern styled dropdown for admin user selector and assign bot tab */
 .styled-dropdown {
     padding: 0.5rem 2.5rem 0.5rem 1rem;
